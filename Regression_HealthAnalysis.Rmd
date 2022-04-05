@@ -1,0 +1,454 @@
+---
+title: "RegressionFinalProject"
+author: "Stephanie"
+date: "10/5/2021"
+output: html_document
+---
+
+```{r}
+library(haven)
+library(broom)
+library(GGally)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(car)
+```
+
+```{r}
+df <- read_sav("ElPasoHispanics2012_DJ_040521.sav")
+```
+
+
+```{r}
+df %>% 
+  select(# mental_score
+         MentalHealthMedCLN, DepressionCLN, AnxietyCLN, Q66.1, Q66.2, Q66.3, 
+         # health_score
+         DiabetesMedCLN, SeizureCLN, BloodCLN, SkinCLN, SleepCLN, VitaminCLN, LiverCLN, ThyroidCLN, HeadCLN, HeartCLN, DentalCLN, FluColdCLN, CholestorolCLN, CancerCLN, BurnsCLN, InfectionCLN, GastritisStomCLN, AsthmaCLN, ArthritisCLN, AnemiaCLN, AllergyCLN, ADHDCLN, HeartburnCLN, HiBloodPresCLN, PhysInjuryCLN, 
+         Age, Gender, HousingCLN, Citizenship, GenCLN, HighestEducation, YearsEdu, FBFriendsCLN, 
+         #insurance
+         Q63A, 
+         YearsEPCLN, SESCLN, 
+         # smoke
+         Q83B, Q83bb,  
+         # drink
+         Q84a, Q84b, 
+         Q85, Q85a, Q85redcln, 
+         Q88, 
+         # drug_score
+         Q90.1A, Q90.2A, Q90.3A, Q90.4A, Q90.5A, Q90.6A, 
+         Q95A,  
+         Q96ACLN, 
+         # medical debts
+         Q118B, 
+         # how many sleep
+         Q139A, 
+         #weights
+         Weightscl
+         ) ->
+  pj_df
+```
+
+```{r}
+# write it to a smaller csv
+#write.csv(pj_df, "regression_fp_data.csv", row.names = FALSE)
+```
+
+```{r}
+pj_df <- read_csv("regression_fp_data.csv")
+#glimpse(pj_df)
+```
+
+# Y Variable: Health Score
+
+```{r}
+# Create variable: health_score
+pj_df$health_score <- apply(pj_df[1:31], 1, function(x) length(which(x==1)))
+distinct(unique(pj_df[c("health_score")]))
+
+# Create variable: drug_score
+pj_df$drug_score <- apply(pj_df[43:48], 1, function(x) length(which(x==1)))
+distinct(unique(pj_df[c("drug_score")]))
+```
+
+```{r}
+# check na values in each column
+pj_df %>% 
+  summarise(across(everything(), ~ sum(is.na(.x))))
+```
+
+```{r}
+# replace certain number which indicates na values without "Age" column
+pj_df[1:31, 33:60][pj_df[1:31, 33:60] == c(41,78,99)] <- NA 
+
+pj_df %>% 
+  summarise(across(everything(), ~ sum(is.na(.x))))
+```
+
+```{r}
+# Filter only needed column
+pj_df %>% 
+  select(-(1:31), -(43:48)) ->
+  pj_df
+```
+
+# Replace NA to mean value of column "YearsEPCLN" (have 662 NAs, others have less than 10)
+```{r}
+# check how many NAs are in each column
+pj_df %>% 
+  summarise(across(everything(), ~ sum(is.na(.x))))
+
+# df YearsEPCLN without NA
+pj_df %>% 
+  select(YearsEPCLN) ->
+  ins_wo_na
+
+na.omit(ins_wo_na) -> ins_wo_na
+
+ins_wo_na[ins_wo_na == "Inf"] <- NA
+ins_wo_na[ins_wo_na == "-Inf"] <- NA
+
+ins_wo_na %>% 
+  drop_na ->
+  ins_wo_na
+
+# replace NAs with mean
+round(mean(ins_wo_na$YearsEPCLN), 0) # mean: 21
+pj_df$YearsEPCLN[is.na(pj_df$YearsEPCLN)] <- 21
+```
+
+# Overall F-test: p-value < 0.05 indicates that at least one have relationship with y (health_score)
+```{r}
+# With the variable we think will have relationship
+lm_begin <- lm(health_score ~ Age + Gender + HousingCLN + Citizenship + GenCLN + HighestEducation + YearsEdu + FBFriendsCLN + Q63A + YearsEPCLN + SESCLN + Q85redcln + drug_score + Q118B + Q139A, data = pj_df)
+glance(lm_begin)
+```
+
+```{r, message=FALSE}
+pj_df %>% 
+  select(health_score, Gender, HousingCLN, Citizenship, GenCLN, YearsEdu) -> for_gg_df1
+ggpairs(for_gg_df1)
+
+pj_df %>% 
+  select(health_score, FBFriendsCLN, Q63A,YearsEPCLN, SESCLN, drug_score, Q139A) -> for_gg_df2
+ggpairs(for_gg_df2)
+```
+
+
+# Test SLR in Big Model
+1. With Age
+```{r}
+lm_out1 <- lm(health_score ~ Age, data = pj_df, weights = Weightscl)
+tidy(lm_out1)
+```
+
+2. With Gender
+```{r}
+lm_out2 <- lm(health_score ~ Gender, data = pj_df, weights = Weightscl)
+tidy(lm_out2)
+
+# plot
+qplot(x = Gender, y = health_score, data = pj_df)
+qplot(x = Gender, y = health_score, data = pj_df) + geom_jitter()
+#residual plot
+aout1 <- augment(x = lm_out2)
+qplot(x = .fitted, y = .resid, data = aout1) + geom_jitter()
+```
+
+3. With HousingCLN
+```{r}
+lm_out3 <- lm(health_score ~ factor(HousingCLN), data = pj_df, weights = Weightscl)
+tidy(lm_out3)
+```
+
+4. With Citizenship
+```{r}
+lm_out4 <- lm(health_score ~ factor(Citizenship), data = pj_df, weights = Weightscl)
+tidy(lm_out4)
+```
+
+5. With GenCLN
+```{r}
+lm_out5 <- lm(health_score ~ factor(GenCLN), data = pj_df, weights = Weightscl)
+tidy(lm_out5)
+
+# plot
+#qplot(x = factor(GenCLN), y = health_score, data = pj_df)
+#residual plot
+#lm_cat <- lm(health_score ~ GenCLN, data = pj_df, weights = Weightscl)
+#aout2 <- augment(x = lm_cat)
+#qplot(x = .fitted, y = .resid, data = aout2)
+```
+
+6. With HighestEducation
+```{r}
+lm_out6 <- lm(health_score ~ factor(HighestEducation), data = pj_df, weights = Weightscl)
+tidy(lm_out6)
+```
+
+7. With YearsEdu
+```{r}
+lm_out7 <- lm(health_score ~ YearsEdu, data = pj_df, weights = Weightscl)
+tidy(lm_out7)
+
+# plot
+#qplot(x = YearsEdu, y = health_score, data = pj_df)
+#residual plot
+#aout3 <- augment(x = lm_out7)
+#qplot(x = .fitted, y = .resid, data = aout3)
+#qplot(x = .fitted, y = .resid, data = aout3) + geom_jitter()
+```
+
+8. With FBFriendsCLN
+```{r}
+lm_out8 <- lm(health_score ~ FBFriendsCLN, data = pj_df, weights = Weightscl)
+tidy(lm_out8)
+```
+
+9. With Insurance
+```{r}
+lm_test1 <- lm(health_score ~ Q63A + YearsEPCLN + factor(SESCLN), data = pj_df, weights = Weightscl)
+tidy(lm_test1)
+
+# Q63A(Insurance) is relevant
+# plot
+qplot(x = Q63A, y = health_score, data = pj_df) + geom_jitter()
+#residual plot
+lm_63A <- lm(health_score ~ Q63A, data = pj_df, weights = Weightscl)
+tidy(lm_63A)
+aout4 <- augment(x = lm_63A)
+qplot(x = .fitted, y = .resid, data = aout4) + geom_jitter()
+
+# YearsEPCLN is relevant
+# plot
+qplot(x = YearsEPCLN, y = health_score, data = pj_df) + geom_jitter()
+#residual plot
+lm_yearsep <- lm(health_score ~ YearsEPCLN, data = pj_df, weights = Weightscl)
+tidy(lm_yearsep)
+aout5 <- augment(x = lm_yearsep)
+qplot(x = .fitted, y = .resid, data = aout5)
+```
+
+10. With Drinking
+```{r}
+lm_test2 <- lm(health_score ~ Q85redcln, data = pj_df, weights = Weightscl)
+tidy(lm_test2)
+
+# plot
+qplot(x = Q85redcln, y = health_score, data = pj_df) + geom_jitter()
+#residual plot
+aout6 <- augment(x = lm_test2)
+qplot(x = .fitted, y = .resid, data = aout6)
+```
+
+11. With Drug Score
+```{r, message=FALSE}
+lm_test6 <- lm(health_score ~ drug_score, data = pj_df, weights = Weightscl)
+tidy(lm_test6)
+
+# plot
+qplot(x = drug_score, y = health_score, data = pj_df) + geom_jitter() # Unequal Variance?
+#residual plot
+aout7 <- augment(x = lm_test4)
+qplot(x = .fitted, y = .resid, data = aout7) + geom_jitter() + geom_smooth()
+
+# try log(y)
+pj_df %>% 
+  mutate(log_health_score = log(health_score)) ->
+  try_log
+
+na.omit(try_log) -> try_log
+
+try_log[try_log == "Inf"] <- NA
+try_log[try_log == "-Inf"] <- NA
+
+try_log %>% 
+  drop_na ->
+  try_log
+
+lm_log_drug <- lm(log_health_score ~ drug_score, data = try_log, weights = Weightscl)
+tidy(lm_log_drug)
+aout_log1 <- augment(x = lm_log_drug)
+qplot(x = .fitted, y = .resid, data = aout_log1) # not better
+
+# try log both x and y
+pj_df %>% 
+  mutate(log_health_score = log(health_score), 
+         log_drug_score = log(drug_score)) ->
+  try_log2
+
+na.omit(try_log2) -> try_log2
+
+try_log2[try_log2 == "Inf"] <- NA
+try_log2[try_log2 == "-Inf"] <- NA
+
+try_log2 %>% 
+  drop_na ->
+  try_log2
+
+lm_log_both <- lm(log_health_score ~ log_drug_score, data = try_log2, weights = Weightscl)
+tidy(lm_log_both)
+aout_log2 <- augment(x = lm_log_both)
+qplot(x = .fitted, y = .resid, data = aout_log2) # residual plot
+```
+
+12. With Medical Debts
+```{r}
+lm_test7 <- lm(health_score ~ Q118B, data = pj_df, weights = Weightscl)
+tidy(lm_test7)
+```
+
+13. With Sleep
+```{r}
+lm_test8 <- lm(health_score ~ Q139A, data = pj_df, weights = Weightscl)
+tidy(lm_test8)
+
+# plot
+qplot(x = Q139A, y = health_score, data = pj_df) + geom_jitter()
+#residual plot
+aout8 <- augment(x = lm_test8)
+qplot(x = .fitted, y = .resid, data = aout8)
+
+# log(x)
+pj_df %>% 
+  mutate(log_Q139A = log(Q139A)) ->
+  try_log
+
+na.omit(try_log) -> try_log
+
+try_log[try_log == "Inf"] <- NA
+try_log[try_log == "-Inf"] <- NA
+
+try_log %>% 
+  drop_na ->
+  try_log
+
+all(is.na(try_log)) # check any na left
+
+#try_log$log_Q139A <- as.numeric(gsub("\\.", "", try_log$log_Q139A))
+#try_log$health_score <- as.numeric(gsub("\\.", "", try_log$health_score))
+
+lm_log_Q139A <- lm(health_score ~ log_Q139A, data = try_log, weights = Weightscl)
+tidy(lm_log_Q139A)
+aout_log <- augment(x = lm_log_Q139A)
+qplot(x = .fitted, y = .resid, data = aout_log)
+
+# log not working, we should just remove outliers! More than 20 hrs sleep doesn's make sense!
+pj_df %>% 
+  filter(Q139A < 20) ->
+  try_rm_olrs
+
+lm_rm_o <- lm(health_score ~ Q139A, data = try_rm_olrs, weights = Weightscl)
+
+qplot(x = Q139A, y = health_score, data = try_rm_olrs) + geom_jitter() # plot
+
+aout_rm <- augment(x = lm_rm_o)
+qplot(x = .fitted, y = .resid, data = aout_rm) #residual plot
+```
+
+# MLR Model
+```{r}
+# Filter only needed model
+pj_df %>% 
+  select(health_score, Gender, Q63A, YearsEPCLN, drug_score, Q139A, Weightscl) ->
+  final_df
+
+final_df %>% 
+  rename("Health_Score" = "health_score", 
+         "Insurance" = "Q63A",
+         "Drug_Score" = "drug_score", 
+         "Sleep" = "Q139A") -> 
+  final_df
+
+final_df %>% 
+  filter(Sleep < 20) ->
+  final_df
+
+# fit the MLR
+lm_out <- lm(Health_Score ~ Gender + Insurance + YearsEPCLN + Drug_Score + Sleep, data = final_df, weights = Weightscl)
+tidy(lm_out)
+
+
+
+# Type I sum of squares
+anova(lm_out)
+# we can get: 
+SSR(X1|X2, X3, X4, X5) = 6694
+SSR(X2|X1, X3, X4, X5) = 1977
+SSR(X3|X1, X2, X4, X5) = 4182
+SSR(X4|X1, X2, X3, X5) = 2204
+SSR(X5|X1, X2, X3, X4) = 4455
+# conclusion: Adding Gender decrease the sum of squares by 6694, but adding in Insurance only decreased it by additional 1977, while every other predictors present
+
+Anova(lm_out)
+```
+
+```{r, message=FALSE}
+# GGPairs
+final_df %>% 
+  select(Health_Score, Gender, Insurance, YearsEPCLN, Drug_Score, Sleep) ->
+  pairs1
+ggpairs(data = pairs1)
+```
+
+# Residual PLot
+
+```{r}
+# MLR
+lm_rich <- lm(Health_Score ~ Gender + Insurance + YearsEPCLN + Drug_Score + Sleep, data = final_df, weights = Weightscl)
+tidy(lm_rich)
+summary(lm_rich)
+
+a_rich <- augment(lm_rich)
+qplot(x = .fitted, y = .resid, data = a_rich)
+```
+
+```{r}
+# Check if there is Multicollinearity
+vif(lm_rich)
+
+# GGpairs
+final_df %>% 
+  select(Gender, Insurance, YearsEPCLN, Drug_Score) ->
+  pairs2
+ggpairs(data = pairs2)
+
+# Run LR
+lm_check <- lm(Health_Score ~ Gender + Insurance + YearsEPCLN + Drug_Score, data = final_df, weights = Weightscl)
+tidy(lm_check)
+  
+lm_check1 <- lm(Health_Score ~ Gender, data = final_df, weights = Weightscl)
+lm_check2 <- lm(Health_Score ~ Insurance, data = final_df, weights = Weightscl)
+lm_check3 <- lm(Health_Score ~ YearsEPCLN, data = final_df, weights = Weightscl)
+lm_check4 <- lm(Health_Score ~ Drug_Score, data = final_df, weights = Weightscl)
+
+tidy(lm_check1)
+tidy(lm_check2)
+tidy(lm_check3)
+tidy(lm_check4)
+
+# Gender and Q63A has slightly multicollinearity
+lm_a <- lm(Health_Score ~ Gender + Insurance, data = final_df, weights = Weightscl)
+tidy(lm_a)
+
+# Try test the r-squared
+glance(lm(Gender ~ Sleep, data = final_df, weights = Weightscl))$r.squared
+```
+
+```{r}
+# Fit Categorical Variable (Gender) in
+final_df %>% 
+  mutate(Gender = as.character(Gender)) ->
+  test_df
+
+# convert to factor
+test_df %>% 
+  mutate(Gender = parse_factor(Gender, levels = c("1", "2"))) ->
+  test_df
+
+# fit
+lm_gen <- lm(Health_Score ~ Gender + Insurance + YearsEPCLN + Drug_Score + Sleep, data = test_df, weights = Weightscl)
+tidy(lm_gen, conf.int = T) # reference level: Gender2
+```
+
